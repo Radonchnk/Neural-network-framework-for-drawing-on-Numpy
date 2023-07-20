@@ -8,7 +8,7 @@ import time
 
 class Network(object):
 
-    def __init__(self):
+    def __init__(self, name = ""):
         """The list ``sizes`` contains the number of neurons in the
         respective layers of the network.  For example, if the list
         was [2, 3, 1] then it would be a three-layer network, with the
@@ -19,7 +19,10 @@ class Network(object):
         layer is assumed to be an input layer, and by convention we
         won't set any biases for those neurons, since biases are only
         ever used in computing the outputs from later layers."""
-        userInput = int(input("Whire 1 to create an ann, 0 to load: "))
+        if name == "":
+            userInput = int(input("Write 1 to create an ann, 0 to load: "))
+        else:
+            userInput = 0
         if userInput:
             name = input("Write an name for your neural network: ")
             if os.path.exists(name):
@@ -33,7 +36,7 @@ class Network(object):
 
                 neuronsPerHidden = []
                 for x in range(numberOfHiddenLayers):
-                    numberOfNeurons = int(input(f"Hrite how many neurons do you want to have on {x + 1}th layer: "))
+                    numberOfNeurons = int(input(f"Write how many neurons do you want to have on hiden layer No.{x + 1}: "))
                     neuronsPerHidden.append(numberOfNeurons)
 
                 self.sizes = [numberOfInputs] + neuronsPerHidden + [numberOfOutputs]
@@ -45,7 +48,8 @@ class Network(object):
 
                 self.storeDataJson()
         else:
-            name = input("Write a name of your ANN: ")
+            if name == "":
+                name = input("Write a name of your ANN: ")
             if os.path.exists(name):
                 self.name = name
                 self.loadDataJson()
@@ -75,32 +79,35 @@ class Network(object):
         self.sizes = data["sizes"]
 
     def feedforward(self, a):
+        a = np.reshape(a, (len(a), 1)) #!!!!! клстиль !!!!! прибрати коли напишу дот функцію
         """Return the output of the network if ``a`` is input."""
         for b, w in zip(self.biases, self.weights):
             a = sigmoid(np.dot(w, a)+b)
         return a
 
-    def evaluate(self, test_data):
-        """Return the number of test inputs for which the neural
-        network outputs the correct result. Note that the neural
-        network's output is assumed to be the index of whichever
-        neuron in the final layer has the highest activation."""
-        test_results = [(np.argmax(self.feedforward(x)), y)
-                        for (x, y) in test_data]
-        return sum(int(x == y) for (x, y) in test_results)
+    def testNetwork(self, testingData):
+        def round_to_zero_or_one(numpy_array):
+            # Round each element to the nearest integer (0 or 1) and convert to 1D Python list
+            rounded_list = np.round(numpy_array).astype(int).tolist()
+            rounded_list = [x[0] for x in rounded_list]
+            return rounded_list
 
-    def testNetwork(self, testingData, extended = 0):
         passes = 0
         for x in testingData:
-            rawOutput = self.feedforward(x[0])[-1].tolist()
-            print(rawOutput, "   ", x[1])
-            #roundedOutput = [round(i) for i in rawOutput]
-            #if roundedOutput == x[1]:
-            #    passes += 1
-        print(f"===============\n{passes}/{len(testingData)}\n===============")
+            rawOutput = self.feedforward(x[0]).tolist()
+            roundedOutput = round_to_zero_or_one(rawOutput)
+            if roundedOutput == x[1]:
+                passes += 1
         return passes
 
     def SGD(self, training_data, epochs, mini_batch_size, eta, test_data = 0):
+        training_data = [[np.reshape(training_data[x][0], (len(training_data[0][0]), 1)),
+                          np.reshape(training_data[x][1], (len(training_data[0][1]), 1))] for x in
+                         range(len(training_data))]
+        if test_data:
+            test_data = [[np.reshape(test_data[x][0], (len(test_data[0][0]), 1)), test_data[x][1]] for x in
+                         range(len(test_data))]
+        # костиль, який переводить данні в формат np матриці 784x1
         """Train the neural network using mini-batch stochastic
         gradient descent.  The ``training_data`` is a list of tuples
         ``(x, y)`` representing the training inputs and the desired
@@ -109,9 +116,17 @@ class Network(object):
         network will be evaluated against the test data after each
         epoch, and partial progress printed out.  This is useful for
         tracking progress, but slows things down substantially."""
-        training_data = list(training_data)
         n = len(training_data)
         for j in range(epochs):
+
+            if j % 1 == 0:
+                self.storeDataJson()
+                start_time = time.time()
+                networkResult = self.testNetwork(test_data)
+                end_time = time.time()
+                print(f"Epoch {j} nn gives result of {networkResult} / {len(test_data)}, which is calculated in {end_time - start_time}s")
+
+            start_time = time.time()
             random.shuffle(training_data)
             mini_batches = [
                 training_data[k:k+mini_batch_size]
@@ -119,12 +134,11 @@ class Network(object):
             for mini_batch in mini_batches:
                 self.update_mini_batch(mini_batch, eta)
             if test_data != 0:
-                if j % 5 == 4:
-                    self.storeDataJson()
-                    print("Epoch {0}: {1} / {2}".format(j, self.evaluate(test_data), len(test_data)))
+                    end_time = time.time()
+                    print(f"Epoch {j} complete in {end_time - start_time}s")
             else:
-               print("Epoch {0} complete".format(j))
-
+                end_time = time.time()
+                print(f"Epoch {j} complete in {end_time - start_time}s")
 
     def update_mini_batch(self, mini_batch, eta):
         """Update the network's weights and biases by applying
@@ -191,9 +205,6 @@ def sigmoid_prime(z):
     """Derivative of the sigmoid function."""
     return sigmoid(z)*(1-sigmoid(z))
 
-
-
-
 def load_data():
     f = gzip.open('mnist.pkl.gz', 'rb')
     training_data, validation_data, test_data = pickle.load(f, encoding="latin1")
@@ -216,5 +227,12 @@ def vectorized_result(j):
     e[j] = 1.0
     return e
 
-f = gzip.open('mnist.pkl.gz', 'rb')
-print(pickle.load(f, encoding="latin1"))
+f = gzip.open('compressed_data.pkl.gz', 'rb')
+train, test ,validation = pickle.load(f, encoding="latin1")
+
+train2, test2 ,validation2 = load_data_wrapper()
+
+nn = Network(name = "")
+
+#print(nn.feedforward(np.reshape(train[0][0], (784, 1))))
+nn.SGD(train, 30, 10, 0.1, test)
